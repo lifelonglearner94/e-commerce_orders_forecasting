@@ -1,6 +1,8 @@
 import pandas as pd
 import os
 from prophet import Prophet
+from sklearn.model_selection import ParameterGrid
+from prophet.diagnostics import cross_validation, performance_metrics
 
 def hyper_tuning(df, param_grid):
     """
@@ -13,9 +15,6 @@ def hyper_tuning(df, param_grid):
     Returns:
         pd.Series: Best hyperparameters and corresponding MAPE score.
     """
-    from sklearn.model_selection import ParameterGrid
-    from prophet.diagnostics import cross_validation, performance_metrics
-
     # Create a list of all combinations of hyperparameters
     all_params = list(ParameterGrid(param_grid))
 
