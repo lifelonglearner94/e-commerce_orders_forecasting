@@ -256,5 +256,7 @@ for warehouse in warehouses:
 
 
 
+for warehouse in warehouses:
+    pass
 # TODO
 # Find best stacking regressors per warehouse with the hypertuned models !
