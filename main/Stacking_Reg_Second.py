@@ -91,7 +91,7 @@ def randomized_hyper_tuning(model, X, y, param_dist):
     random_search = RandomizedSearchCV(
         model,
         param_distributions=param_dist,
-        n_iter=100,  # Number of parameter settings that are sampled
+        n_iter=1,  # Number of parameter settings that are sampled
         cv=5,
         scoring='neg_mean_absolute_percentage_error',
         verbose=1,
@@ -193,6 +193,56 @@ def get_rand_param_dist_for_regressor(regressor: str):
 
     return param_grid[regressor]
 
+
+def get_random_stacking_regressor(list_of_regressors):
+    """
+    Create a random StackingRegressor with a subset of base models.
+
+    Returns:
+    tuple: (list of used regressor names, StackingRegressor object)
+    """
+    num_regressors = random.randint(3, min(10, len(list_of_regressors)))
+
+    base_models = random.sample(list_of_regressors, num_regressors)
+    # Define meta-model
+    meta_model = LinearRegression()
+
+    used_regressors = [i[0] for i in base_models]
+    # Create the stacking regressor
+    stacking_regressor = StackingRegressor(
+        estimators=base_models,
+        final_estimator=meta_model,
+        cv=5
+    )
+    return used_regressors, stacking_regressor
+
+
+# def find_best_stacking_regressors():
+
+#     warehouses = scaled_data["warehouse"].unique().tolist()
+
+#     score_dataframe = pd.DataFrame(columns=warehouses)
+
+#     # Perform multiple iterations of model evaluation
+#     for i in range(150):
+#         used_regressors, model = get_random_stacking_regressor()
+
+#         result_list = cross_val_modelX(scaled_data, model)
+
+#         result_list.append(set(used_regressors))
+
+#         new_row = pd.DataFrame([result_list], columns=[*warehouses, "reg"])
+#         score_dataframe = pd.concat([score_dataframe, new_row], ignore_index=True)
+
+#         # Save results
+#         score_dataframe.to_csv("scores.csv")
+
+#     # Print best models for each warehouse
+#     for warehouse in warehouses:
+#         print(warehouse)
+#         print(score_dataframe.loc[score_dataframe[warehouse].idxmin()])
+#         print()
+
 # Main execution
 data_folder = "data"
 filename = "train.csv"
@@ -209,6 +259,8 @@ final_df = add_cyclic_sin_cos_features(df.copy(), datecolumn="date")
 final_df = create_lagged_features(final_df.copy(), "orders", lags=14)
 final_df["daterange"] = list(range(len(final_df)))
 
+
+# TODO I maybe later want to scale per warehouse, so each warehouse data on its own
 scaled_data, scaler = scale_t_columns(final_df.copy())
 
 
@@ -243,6 +295,8 @@ for warehouse in warehouses:
 
     warehouse_data = scaled_data[scaled_data["warehouse"] == warehouse]
 
+
+
     warehouse_data_X = warehouse_data.drop(columns=["orders", "warehouse"])
     warehouse_data_y = warehouse_data["orders"]
 
@@ -257,6 +311,6 @@ for warehouse in warehouses:
 
 
 for warehouse in warehouses:
-    pass
-# TODO
-# Find best stacking regressors per warehouse with the hypertuned models !
+
+    used_reg, stacked_model = get_random_stacking_regressor(best_regressors_warehouse_dict[warehouse])
+    # TODO: This is just creating one model, i need to do it several times and find the best!
