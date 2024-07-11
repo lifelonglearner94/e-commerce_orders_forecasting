@@ -91,7 +91,7 @@ def randomized_hyper_tuning(model, X, y, param_dist):
     random_search = RandomizedSearchCV(
         model,
         param_distributions=param_dist,
-        n_iter=1,  # Number of parameter settings that are sampled
+        n_iter=60,  # Number of parameter settings that are sampled
         cv=5,
         scoring='neg_mean_absolute_percentage_error',
         verbose=1,
@@ -127,7 +127,7 @@ def get_rand_param_dist_for_regressor(regressor: str):
     },
     "elastic_net": {
         'alpha': loguniform(1e-3, 1e2),
-        'l1_ratio': uniform(0.1, 1),
+        'l1_ratio': uniform(0.1, 0.9),
         'fit_intercept': [True, False],
         'selection': ['cyclic', 'random']
     },
@@ -207,41 +207,15 @@ def get_random_stacking_regressor(list_of_regressors):
     # Define meta-model
     meta_model = LinearRegression()
 
-    used_regressors = [i[0] for i in base_models]
+    #used_regressors = [i[0] for i in base_models]
     # Create the stacking regressor
     stacking_regressor = StackingRegressor(
         estimators=base_models,
         final_estimator=meta_model,
         cv=5
     )
-    return used_regressors, stacking_regressor
+    return stacking_regressor
 
-
-# def find_best_stacking_regressors():
-
-#     warehouses = scaled_data["warehouse"].unique().tolist()
-
-#     score_dataframe = pd.DataFrame(columns=warehouses)
-
-#     # Perform multiple iterations of model evaluation
-#     for i in range(150):
-#         used_regressors, model = get_random_stacking_regressor()
-
-#         result_list = cross_val_modelX(scaled_data, model)
-
-#         result_list.append(set(used_regressors))
-
-#         new_row = pd.DataFrame([result_list], columns=[*warehouses, "reg"])
-#         score_dataframe = pd.concat([score_dataframe, new_row], ignore_index=True)
-
-#         # Save results
-#         score_dataframe.to_csv("scores.csv")
-
-#     # Print best models for each warehouse
-#     for warehouse in warehouses:
-#         print(warehouse)
-#         print(score_dataframe.loc[score_dataframe[warehouse].idxmin()])
-#         print()
 
 # Main execution
 data_folder = "data"
@@ -309,8 +283,38 @@ for warehouse in warehouses:
     best_regressors_warehouse_dict[warehouse] = [(name, regressor) for name, regressor in zip(regressors_dict.keys(), list_of_best_regressors)]
 
 
-
+score_dataframe = pd.DataFrame(columns=["warehouse", "score", "reg_params"])
 for warehouse in warehouses:
+    try:
+        scaled_data = scaled_data.set_index("date")
+    except:
+        pass
 
-    used_reg, stacked_model = get_random_stacking_regressor(best_regressors_warehouse_dict[warehouse])
-    # TODO: This is just creating one model, i need to do it several times and find the best!
+    warehouse_data = scaled_data[scaled_data["warehouse"] == warehouse]
+
+    warehouse_data_X = warehouse_data.drop(columns=["orders", "warehouse"])
+    warehouse_data_y = warehouse_data["orders"]
+
+    list_of_scores = []
+    list_of_reg_params = []
+
+    for i in range(70): # 2 Iterations as test
+        stacked_model = get_random_stacking_regressor(best_regressors_warehouse_dict[warehouse])
+
+        current_score = abs(cross_val_score(stacked_model, warehouse_data_X, warehouse_data_y, cv=5, scoring="neg_mean_absolute_percentage_error").mean())
+        list_of_scores.append(current_score)
+
+        params_of_the_model = stacked_model.get_params()
+        list_of_reg_params.append(params_of_the_model)
+
+    min_score = min(list_of_scores)
+    min_index = list_of_scores.index(min_score)
+
+    new_row = pd.DataFrame({"warehouse":warehouse,
+                            "score": [min_score],
+                            "reg_params": [list_of_reg_params[min_index]]})
+    score_dataframe = pd.concat([score_dataframe, new_row], ignore_index=True)
+
+print(score_dataframe)
+
+score_dataframe.to_csv("scores_and_estimators.csv")
