@@ -15,6 +15,7 @@ from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.svm import SVR
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.ensemble import StackingRegressor
+from sklearn.impute import KNNImputer
 
 from scipy.stats import randint, uniform
 from scipy.stats import loguniform
@@ -84,6 +85,32 @@ def scale_t_columns(df):
     scaled_df[t_columns] = scaled_t
 
     return scaled_df, scaler
+
+def knn_impute_numeric_columns(df, n_neighbors=3):
+    # Identify numeric columns
+    numeric_columns = df.select_dtypes(include=[np.number]).columns
+
+    # Create a copy of the dataframe with only numeric columns
+    numeric_df = df[numeric_columns].copy()
+
+    # Standardize the data
+    scaler = RobustScaler()
+    scaled_data = scaler.fit_transform(numeric_df)
+
+    # Initialize and fit KNN imputer
+    imputer = KNNImputer(n_neighbors=n_neighbors)
+    imputed_data = imputer.fit_transform(scaled_data)
+
+    # Create a new dataframe with imputed values
+    imputed_df = pd.DataFrame(imputed_data,
+                              columns=numeric_columns,
+                              index=df.index)
+
+    # Replace the numeric columns in the original dataframe with imputed values
+    for col in numeric_columns:
+        df[col] = imputed_df[col]
+
+    return df # later we also need to return the scaler
 
 def randomized_hyper_tuning(model, X, y, param_dist):
 
@@ -234,11 +261,11 @@ final_df = create_lagged_features(final_df.copy(), "orders", lags=14)
 final_df["daterange"] = list(range(len(final_df)))
 
 
-# TODO I maybe later want to scale per warehouse, so each warehouse data on its own
-scaled_data, scaler = scale_t_columns(final_df.copy())
+
+# scaled_data, scaler = scale_t_columns(final_df.copy())
 
 
-warehouses = scaled_data["warehouse"].unique().tolist()
+warehouses = final_df["warehouse"].unique().tolist()
 
 
 xgb_regressor = xgb.XGBRegressor(objective='reg:squarederror', seed=42)
@@ -263,15 +290,16 @@ best_regressors_warehouse_dict = {}
 
 for warehouse in warehouses:
     try:
-        scaled_data = scaled_data.set_index("date")
+        final_df = final_df.set_index("date")
     except:
         pass
 
-    warehouse_data = scaled_data[scaled_data["warehouse"] == warehouse]
-
-
+    warehouse_data = final_df[final_df["warehouse"] == warehouse]
 
     warehouse_data_X = warehouse_data.drop(columns=["orders", "warehouse"])
+
+    warehouse_data_X = knn_impute_numeric_columns(warehouse_data_X, n_neighbors=3)
+
     warehouse_data_y = warehouse_data["orders"]
 
     list_of_best_regressors = []
@@ -286,19 +314,22 @@ for warehouse in warehouses:
 score_dataframe = pd.DataFrame(columns=["warehouse", "score", "reg_params"])
 for warehouse in warehouses:
     try:
-        scaled_data = scaled_data.set_index("date")
+        final_df = final_df.set_index("date")
     except:
         pass
 
-    warehouse_data = scaled_data[scaled_data["warehouse"] == warehouse]
+    warehouse_data = final_df[final_df["warehouse"] == warehouse]
 
     warehouse_data_X = warehouse_data.drop(columns=["orders", "warehouse"])
+
+    warehouse_data_X = knn_impute_numeric_columns(warehouse_data_X, n_neighbors=3)
+
     warehouse_data_y = warehouse_data["orders"]
 
     list_of_scores = []
     list_of_reg_params = []
 
-    for i in range(70): # 2 Iterations as test
+    for i in range(70):
         stacked_model = get_random_stacking_regressor(best_regressors_warehouse_dict[warehouse])
 
         current_score = abs(cross_val_score(stacked_model, warehouse_data_X, warehouse_data_y, cv=5, scoring="neg_mean_absolute_percentage_error").mean())
@@ -306,6 +337,9 @@ for warehouse in warehouses:
 
         params_of_the_model = stacked_model.get_params()
         list_of_reg_params.append(params_of_the_model)
+        print()
+        print(warehouse, i)
+        print()
 
     min_score = min(list_of_scores)
     min_index = list_of_scores.index(min_score)
