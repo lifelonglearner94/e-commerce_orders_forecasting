@@ -14,7 +14,7 @@ from sklearn.neighbors import KNeighborsRegressor
 from sklearn.ensemble import StackingRegressor
 from sklearn.impute import KNNImputer
 from sklearn.pipeline import Pipeline
-
+from sklearn.ensemble import StackingRegressor
 import os
 
 nan = np.nan
@@ -32,13 +32,18 @@ df = df[test_cols_plus_y]
 warehouses = df["warehouse"].unique().tolist()
 
 
-dict_of_warehouse_estimator_dicts = {}
+dict_of_warehouse_estimators = {}
 
 for warehouse, esti in zip(warehouses, esti_params["reg_params"]):
 
     dictionary = eval(esti.replace(", ...", ""))
 
-    dict_of_warehouse_estimator_dicts[warehouse] = dictionary
+    regressor = StackingRegressor(estimators=None)
 
+    regressor.set_params(**dictionary)
+
+    dict_of_warehouse_estimators[warehouse] = regressor
+
+print(dict_of_warehouse_estimators.keys())
 
 # Got the best params for the stacking regressor for each warehouse !
